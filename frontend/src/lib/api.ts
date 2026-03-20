@@ -82,14 +82,19 @@ export interface StyleGuide {
 
 // Article Types
 export interface Article {
+  _id?: string;
   link: string;
   title: string;
-  text: string;
-  author: string[];
-  publish_date: string | null;
+  text?: string | null;
+  authors?: string[];
+  author?: string[]; // Keep for backwards compatibility
+  publish_date?: string | null;
   keywords?: string[];
   tags?: string[];
-  thumbnail?: string;
+  thumbnail?: string | null;
+  source?: string | null;
+  created_at?: string;
+  updated_at?: string;
   [key: string]: any;
 }
 
@@ -137,10 +142,16 @@ async function apiCall<T>(
   const url = `${API_BASE_URL}${endpoint}`;
 
   const isFormData = options?.body instanceof FormData;
+  
+  // Get auth token if available
+  const token = localStorage.getItem('auth_token');
+  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+  
   const defaultHeaders: HeadersInit = isFormData
-    ? (options?.headers as HeadersInit | undefined) ?? {}
+    ? { ...authHeader, ...(options?.headers as HeadersInit | undefined) }
     : {
         "Content-Type": "application/json",
+        ...authHeader,
         ...options?.headers,
       };
 
@@ -233,6 +244,12 @@ export const articlesApi = {
       `/articles/scrape?${params.toString()}`
     );
   },
+
+  getSaved: (limit: number = 50, skip: number = 0) => {
+    return apiCall<Article[]>(
+      `/articles/saved?limit=${limit}&skip=${skip}`
+    );
+  },
 };
 
 // ============ EDITORIAL API ============
@@ -299,13 +316,13 @@ export const reportAnalysisApi = {
 // ============ FILINGS API ============
 
 export const filingsApi = {
-  getUSFilings: (count: number = 10) => {
+  getUSFilings: (count: number = 90) => {
     return apiCall<{ results: Filing[]; [key: string]: any }>(
       `/market-filling/us?count=${count}`
     );
   },
 
-  getIndiaFilings: (count: number = 10) => {
+  getIndiaFilings: (count: number = 90) => {
     return apiCall<{ results: Filing[]; [key: string]: any }>(
       `/market-filling/india?count=${count}`
     );
@@ -376,6 +393,119 @@ export const userSettingsApi = {
     return apiCall<any>("/admin/settings/user", {
       method: "POST",
       body: JSON.stringify(settings),
+    });
+  },
+};
+
+// ============ AUTH API ============
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+}
+
+export interface UserPublic {
+  id: string;
+  email: string;
+  username: string;
+  is_active: boolean;
+  is_verified: boolean;
+  created_at: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  username: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  new_password: string;
+}
+
+export interface ChangePasswordRequest {
+  old_password: string;
+  new_password: string;
+}
+
+export interface ResendVerificationRequest {
+  email: string;
+}
+
+// Helper to get auth token from localStorage
+const getAuthToken = (): string | null => {
+  return localStorage.getItem('auth_token');
+};
+
+// Helper to add auth header
+const authHeaders = (): HeadersInit => {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+export const authApi = {
+  register: (data: RegisterRequest) => {
+    return apiCall<UserPublic>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  login: async (email: string, password: string): Promise<LoginResponse> => {
+    const formData = new URLSearchParams();
+    formData.append("username", email);
+    formData.append("password", password);
+
+    return apiCall<LoginResponse>("/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: formData,
+    });
+  },
+
+  getMe: () => {
+    return apiCall<UserPublic>("/auth/me", {
+      headers: authHeaders(),
+    });
+  },
+
+  forgotPassword: (data: ForgotPasswordRequest) => {
+    return apiCall<{ message: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  resetPassword: (data: ResetPasswordRequest) => {
+    return apiCall<{ message: string }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  verifyEmail: (token: string) => {
+    return apiCall<{ message: string }>(`/auth/verify-email?token=${token}`);
+  },
+
+  resendVerification: (data: ResendVerificationRequest) => {
+    return apiCall<{ message: string }>("/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  changePassword: (data: ChangePasswordRequest) => {
+    return apiCall<{ message: string }>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: authHeaders(),
     });
   },
 };
