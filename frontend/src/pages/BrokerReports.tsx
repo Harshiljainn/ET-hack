@@ -194,6 +194,8 @@ export default function BrokerReports() {
 		maxArticles: 60,
 		websites: [] as string[],
 	});
+	const [isRefreshing, setIsRefreshing] = useState(false);
+	const [isExtracting, setIsExtracting] = useState(false);
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
@@ -269,6 +271,20 @@ export default function BrokerReports() {
 	const isError = savedError || scrapeError;
 	const error = savedErrorObj || scrapeErrorObj;
 	const refetch = refetchSaved;
+
+	// Reset refresh state when fetch completes
+	useEffect(() => {
+		if (isRefreshing && !savedFetching && !savedPending) {
+			setIsRefreshing(false);
+		}
+	}, [savedFetching, savedPending, isRefreshing]);
+
+	// Reset extract state when scrape completes
+	useEffect(() => {
+		if (isExtracting && !scrapeFetching && !scrapePending && !savedFetching && !savedPending) {
+			setIsExtracting(false);
+		}
+	}, [scrapeFetching, scrapePending, savedFetching, savedPending, isExtracting]);
 
 	const filteredArticles = useMemo(() => {
 		const term = searchQuery.trim().toLowerCase();
@@ -474,6 +490,9 @@ export default function BrokerReports() {
 			websites,
 		});
 
+		// Set extracting state
+		setIsExtracting(true);
+
 		// Trigger scraping with new params
 		await refetchScrape();
 		// Refresh saved articles after scraping
@@ -481,6 +500,7 @@ export default function BrokerReports() {
 	};
 
 	const handleRefresh = () => {
+		setIsRefreshing(true);
 		refetch();
 	};
 
@@ -530,10 +550,10 @@ export default function BrokerReports() {
 								variant="outline"
 								size="sm"
 								onClick={handleRefresh}
-								disabled={loadingState}
+								disabled={isRefreshing}
 							>
 								<RefreshCw className="h-4 w-4 mr-1" />
-								{loadingState ? "Refreshing" : "Refresh All"}
+								{isRefreshing ? "Refreshing" : "Refresh All"}
 							</Button>
 						</div>
 
@@ -644,9 +664,9 @@ export default function BrokerReports() {
 									</span>
 								</div>
 							</div>
-							<Button onClick={handleExtract} disabled={loadingState}>
+							<Button onClick={handleExtract} disabled={isExtracting}>
 								<Search className="h-4 w-4 mr-1" />
-								{loadingState ? "Extracting" : "Extract Reports"}
+								{isExtracting ? "Extracting" : "Extract Reports"}
 							</Button>
 						</div>
 
