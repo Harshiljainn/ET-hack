@@ -499,6 +499,34 @@ export const filingsApi = {
       }),
     });
   },
+
+  getWatchlistFilings: (symbols: string[], source?: string, limit?: number) => {
+    const params = new URLSearchParams();
+    params.append("symbols", symbols.join(","));
+    if (source) params.append("source", source);
+    if (limit) params.append("limit", limit.toString());
+    return apiCall<{
+      symbols: string[];
+      count: number;
+      filings: Array<{
+        id: string;
+        source: string;
+        title: string;
+        company?: string;
+        link: string;
+        date?: string;
+        created_at?: string;
+      }>;
+      status: string;
+    }>(`/market-filling/watchlist?${params.toString()}`);
+  },
+
+  getHistory: (source?: string, limit: number = 50) => {
+    const params = new URLSearchParams();
+    if (source) params.append("source", source);
+    params.append("limit", limit.toString());
+    return apiCall<any[]>(`/market-filling/history?${params.toString()}`);
+  },
 };
 
 // ============ ADMIN API ============
@@ -514,7 +542,7 @@ export const adminApi = {
     );
   },
 
-  updateSettings: (payload: AppSettingsUpdate) => {
+  updateSettings: (key: string, payload: AppSettingsUpdate) => {
     return apiCall<{ settings: AppSettings; status: string; message?: string }>(
       "/admin/settings",
       {

@@ -102,11 +102,9 @@ class AuthService:
             "username": user.username,
             "hashed_password": AuthService.get_password_hash(user.password),
             "is_active": True,
-            "is_verified": False,
+            "is_verified": True,
             "created_at": now,
             "updated_at": now,
-            "reset_token": None,
-            "reset_token_expires": None,
         }
 
         result = await asyncio.to_thread(users_collection.insert_one, user_document)

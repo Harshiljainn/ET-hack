@@ -68,7 +68,7 @@ const Register = () => {
             </div>
             <CardTitle className="text-2xl font-bold">Registration Successful!</CardTitle>
             <CardDescription>
-              Please check your email to verify your account before logging in.
+              You can now login to your account.
             </CardDescription>
           </CardHeader>
           <CardFooter className="flex justify-center">
