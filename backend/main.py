@@ -1,5 +1,8 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from routes import (
     market_filling,
@@ -25,6 +28,25 @@ def startup() -> None:
     except Exception:
         # Loggers in database.py capture details; keep app alive for port binding.
         pass
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    try:
+        app.openapi_schema = get_openapi(
+            title=app.title,
+            version="1.0.0",
+            description=app.description,
+            routes=app.routes,
+        )
+        return app.openapi_schema
+    except Exception:
+        logging.exception("Failed to generate OpenAPI schema")
+        raise
+
+
+app.openapi = custom_openapi
 
 # Enable CORS for frontend development
 app.add_middleware(
