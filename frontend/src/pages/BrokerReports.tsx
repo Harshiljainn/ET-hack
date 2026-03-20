@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
 	DialogTitle,
 	DialogFooter,
 } from "@/components/ui/dialog";
-import { useScrapeArticles, useSavedArticles } from "@/hooks/useApi";
+import { useScrapeArticles, useSavedArticles, useListFavorites, useAddFavorite, useRemoveFavorite } from "@/hooks/useApi";
 import {
 	FileText,
 	Download,
@@ -32,6 +32,7 @@ import {
 	AlertCircle,
 	RefreshCw,
  	Loader2,
+    Heart,
 } from "lucide-react";
 
 const dataSourcesConfig = [
@@ -98,6 +99,7 @@ type PreparedArticle = {
 	tags: string[];
 	authors: string[];
 	wordCount: number;
+	dbId?: string | null;
 };
 
 const SOURCE_LOOKUP: Array<{ match: string; label: string; color: string }> = [
@@ -168,14 +170,55 @@ export default function BrokerReports() {
 	const [maxArticlesInput, setMaxArticlesInput] = useState("60");
 	const [websiteInput, setWebsiteInput] = useState("");
 	const [selectedArticle, setSelectedArticle] = useState<PreparedArticle | null>(null);
+	const [authToken, setAuthToken] = useState<string | null>(() =>
+		typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+	);
+	const [favoriteFeedback, setFavoriteFeedback] = useState<
+		{ type: "info" | "error" | "success"; text: string } | null
+	>(null);
 	const [scrapeParams, setScrapeParams] = useState({
 		count: 5,
 		maxArticles: 60,
 		websites: [] as string[],
 	});
 
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+		const syncToken = () => {
+			setAuthToken(localStorage.getItem("auth_token"));
+		};
+		window.addEventListener("storage", syncToken);
+		return () => window.removeEventListener("storage", syncToken);
+	}, []);
+
+	useEffect(() => {
+		if (!favoriteFeedback || typeof window === "undefined") {
+			return;
+		}
+		const timer = window.setTimeout(() => setFavoriteFeedback(null), 5000);
+		return () => window.clearTimeout(timer);
+	}, [favoriteFeedback]);
+
 	const savedArticlesQuery = useSavedArticles(200, 0);
 	const scrapeQuery = useScrapeArticles({ ...scrapeParams, enabled: false });
+
+	// Favorites (only available when authenticated)
+	const favoritesQuery = useListFavorites();
+	const favoritesData = favoritesQuery.data?.favorites ?? [];
+	const favoriteIds = new Set<string>(
+		(Array.isArray(favoritesData) ? favoritesData.map((f: any) => {
+			// The backend returns ArticleInDB objects in favorites list
+			// We need to extract the _id field and convert to string
+			const id = f._id || f.id;
+			return typeof id === 'object' && id !== null ? String(id) : String(id || "");
+		}).filter(Boolean) : [])
+	);
+	const addFavoriteMutation = useAddFavorite();
+	const removeFavoriteMutation = useRemoveFavorite();
+	
+	const isAuthenticated = Boolean(authToken);
 	const { data: savedData, isLoading: savedLoading, isPending: savedPending, isFetching: savedFetching, isError: savedError, error: savedErrorObj, refetch: refetchSaved } = savedArticlesQuery;
 	const { data: scrapeData, isLoading: scrapeLoading, isPending: scrapePending, isFetching: scrapeFetching, isError: scrapeError, error: scrapeErrorObj, refetch: refetchScrape } = scrapeQuery;
 
@@ -226,9 +269,14 @@ export default function BrokerReports() {
 				tags: tags.length ? `${tags.length} tags` : "No tags",
 			};
 
+			// Extract and normalize the database ID
+			const rawId = article._id || article.id;
+			const dbId = rawId ? (typeof rawId === 'object' ? String(rawId) : String(rawId)) : undefined;
+
 			return {
 				id: article.link || `article-${index}`,
 				title: article.title || "Untitled",
+				dbId,
 				source,
 				company: source,
 				extractedAt: publishInfo.formatted,
@@ -565,6 +613,19 @@ export default function BrokerReports() {
 				</CardHeader>
 				<CardContent>
 					<div className="space-y-4">
+						{favoriteFeedback ? (
+							<div
+								className={`rounded-md border px-3 py-2 text-xs ${
+									favoriteFeedback.type === "error"
+										? "border-destructive text-destructive"
+										: favoriteFeedback.type === "success"
+										? "border-green-500 text-green-600"
+										: "border-border text-muted-foreground"
+									}`}
+							>
+								{favoriteFeedback.text}
+							</div>
+						) : null}
 						{loadingState ? (
 							<div className="flex items-center justify-center py-10 text-muted-foreground">
 								<Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -664,18 +725,72 @@ export default function BrokerReports() {
 													</span>
 												)}
 											</div>
-											<Button
-												variant="ghost"
-												size="sm"
-												className="text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-												onClick={(e) => {
-													e.stopPropagation();
-													setSelectedArticle(report);
-												}}
-											>
-												Read Full Article
-												<ExternalLink className="h-3 w-3 ml-1" />
-											</Button>
+											<div className="flex items-center gap-2">
+												<Button
+													variant="ghost"
+													size="sm"
+													className="text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+													onClick={(e) => {
+														e.stopPropagation();
+														setSelectedArticle(report);
+													}}
+												>
+													Read Full Article
+													<ExternalLink className="h-3 w-3 ml-1" />
+												</Button>
+
+												<Button
+													variant={favoriteIds.has(report.dbId || "") ? "destructive" : "ghost"}
+													size="sm"
+													className="text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+													disabled={!report.dbId || !isAuthenticated}
+													title={!isAuthenticated ? "Sign in to favorite articles" : !report.dbId ? "Article must be saved first" : ""}
+													onClick={async (e) => {
+														e.stopPropagation();
+														if (!report.dbId) {
+															setFavoriteFeedback({
+																type: "info",
+																text: "Save the article before adding it to favorites.",
+															});
+															return;
+														}
+														if (!isAuthenticated) {
+															setFavoriteFeedback({
+																type: "info",
+																text: "Sign in to manage your favorite articles.",
+															});
+															return;
+														}
+														const alreadyFavorite = favoriteIds.has(report.dbId);
+														try {
+															if (alreadyFavorite) {
+																await removeFavoriteMutation.mutateAsync(report.dbId);
+																setFavoriteFeedback({
+																	type: "info",
+																	text: "Removed from favorites.",
+																});
+															} else {
+																await addFavoriteMutation.mutateAsync(report.dbId);
+																setFavoriteFeedback({
+																	type: "success",
+																	text: "Added to favorites.",
+																});
+															}
+														} catch (err) {
+															console.error("toggle favorite failed", err);
+															const message = err instanceof Error ? err.message : "Unable to update favorite.";
+															setFavoriteFeedback({ type: "error", text: message });
+															if (message.toLowerCase().includes("credential")) {
+																localStorage.removeItem("auth_token");
+																setAuthToken(null);
+															}
+														}
+													}}
+												>
+													<Heart className="h-4 w-4 mr-1" />
+													{favoriteIds.has(report.dbId || "") ? "Favorited" : "Favorite"}
+												</Button>
+											</div>
 										</div>
 									</div>
 								);
@@ -684,15 +799,71 @@ export default function BrokerReports() {
 										Showing {filteredCount} of {totalArticles} scraped article
 										{totalArticles === 1 ? "" : "s"}.
 									</span>
-									<Button
+									<div className="flex items-center gap-2">
+										<Button
 										size="sm"
 										variant="secondary"
 										className="bg-accent text-accent-foreground"
 										disabled={preparedReports.length === 0}
-									>
-										<FileText className="h-4 w-4 mr-1" />
-										Synthesize All Reports
-									</Button>
+										>
+											<FileText className="h-4 w-4 mr-1" />
+											Synthesize All Reports
+										</Button>
+
+										<Button
+											size="sm"
+											variant="outline"
+											onClick={async () => {
+												if (!isAuthenticated) {
+													setFavoriteFeedback({
+														type: "info",
+														text: "Sign in to favorite all articles.",
+													});
+													return;
+												}
+												const toFavorite = preparedReports
+													.map((r) => r.dbId)
+													.filter(Boolean) as string[];
+												if (toFavorite.length === 0) {
+													setFavoriteFeedback({
+														type: "info",
+														text: "No saved articles available to favorite yet.",
+													});
+													return;
+												}
+												let createdCount = 0;
+												for (const id of toFavorite) {
+													if (!favoriteIds.has(id)) {
+														try {
+															await addFavoriteMutation.mutateAsync(id);
+															createdCount += 1;
+														} catch (err) {
+															console.error("favorite all failed", err);
+															const message = err instanceof Error ? err.message : "Unable to favorite articles.";
+															setFavoriteFeedback({ type: "error", text: message });
+															if (message.toLowerCase().includes("credential")) {
+																localStorage.removeItem("auth_token");
+																setAuthToken(null);
+															}
+															return;
+														}
+													}
+												}
+												setFavoriteFeedback({
+													type: createdCount > 0 ? "success" : "info",
+													text:
+														createdCount > 0
+															? `Favorited ${createdCount} article${createdCount === 1 ? "" : "s"}.`
+														: "All saved articles are already in favorites.",
+												});
+											}}
+											disabled={preparedReports.length === 0 || !isAuthenticated}
+											title={!isAuthenticated ? "Sign in to favorite articles" : ""}
+										>
+											<FileText className="h-4 w-4 mr-1" />
+											Favorite All
+										</Button>
+									</div>
 								</div>
 							</>
 						)}
