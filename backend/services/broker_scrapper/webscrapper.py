@@ -64,6 +64,7 @@ def clear_cache():
 def scrape(websites: list, count: int = 5) -> list:
     """
     Scrapes articles from a list of websites and extracts metadata, including thumbnails.
+    Skips articles that fail to parse and continues with the next ones.
     """
     articles_data = []
     temp = count
@@ -90,9 +91,14 @@ def scrape(websites: list, count: int = 5) -> list:
                     if temp == 0:
                         break
 
-                    article.download()
-                    article.parse()
-                    article.nlp()
+                    # Try to download and parse; skip if it fails
+                    try:
+                        article.download()
+                        article.parse()
+                        article.nlp()
+                    except Exception as e:
+                        print(f"Skipping article {article.url}: {type(e).__name__}: {e}")
+                        continue
 
                     articles_data.append(
                         {
@@ -113,7 +119,7 @@ def scrape(websites: list, count: int = 5) -> list:
                     temp -= 1
 
                 except Exception as e:
-                    print(f"Failed to parse article: {article.url}. Error: {e}")
+                    print(f"Failed to process article: {e}")
                     continue
 
         except Exception as e:

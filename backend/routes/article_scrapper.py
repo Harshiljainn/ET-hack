@@ -63,9 +63,21 @@ async def scrape_broker_articles(
     if websites:
         website_list = [url.strip() for url in websites.split(",")]
 
-    result = await asyncio.to_thread(
-        scrape_articles, websites=website_list, count=count, max_articles=max_articles
-    )
+    try:
+        # Set a 2-minute timeout for the entire scrape operation
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                scrape_articles, websites=website_list, count=count, max_articles=max_articles
+            ),
+            timeout=120  # 2 minutes
+        )
+    except asyncio.TimeoutError:
+        return {
+            "status": "timeout",
+            "message": "Scraping operation timed out after 2 minutes. This may happen with slow websites.",
+            "total_articles": 0,
+            "articles": [],
+        }
 
     if result.get("status") == "success" and result.get("articles"):
         articles = _to_article_models(result.get("articles", []))
