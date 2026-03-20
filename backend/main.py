@@ -13,9 +13,18 @@ from routes import (
     auth,
     user_content,
 )
-from services.database import client  # Initialize database connection
+from services.database import init_indexes
 
 app = FastAPI(title="Stock Broker Assistant")
+
+
+@app.on_event("startup")
+def startup() -> None:
+    try:
+        init_indexes()
+    except Exception:
+        # Loggers in database.py capture details; keep app alive for port binding.
+        pass
 
 # Enable CORS for frontend development
 app.add_middleware(
