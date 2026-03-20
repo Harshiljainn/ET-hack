@@ -9,8 +9,11 @@ from pymongo.database import Database
 load_dotenv()
 
 # MongoDB connection string and DB name
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-DATABASE_NAME = os.getenv("DATABASE_NAME", "stock_broker_assistant")
+MONGODB_URL = os.getenv(
+    "MONGODB_URL",
+    "mongodb+srv://harshiljain135_db_user:Hello%4012345@cluster0.le9zdwf.mongodb.net/?appName=Cluster0",
+)
+DATABASE_NAME = os.getenv("DATABASE_NAME", "et-hack")
 
 # -------------------------------
 # Mongo Client with TLS support
